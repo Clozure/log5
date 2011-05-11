@@ -51,6 +51,7 @@ Nice to have undefcategory or the like
 	   #:close-sender
 	   #:create-handle-message-context
 	   #:start-handling
+     #:*ensure-stream-open-sharing*
 	   #:finish-handling
 	   #:close-stream?
 	   #:output-stream
@@ -738,6 +739,12 @@ should descend."))
 	(t
 	 (error "don't know how to handle ~a" output))))
 
+(defvar *ensure-stream-open-sharing* ':default
+  "By default on CCL a stream can only be used by the thread that opened it. (:PRIVATE)
+  Other values are :EXTERNAL for application to control stream access, 
+  or :LOCK requiring calling thread to acquire a lock.
+  Currently has no effect in other implementations.")
+
 (defun ensure-stream-open (stream-sender)
   (or (output-stream stream-sender)
       (let ((location (location stream-sender)))
@@ -746,10 +753,16 @@ should descend."))
 	      (cond ((streamp location) location)
 		    ((or (pathnamep location) (stringp location))
 		     (ensure-directories-exist location)
-		     (open location :direction :output
+		     (apply 'open location :direction :output
 			   :if-does-not-exist :create
 			   :if-exists :append 
-			   #+(or) (if reset-log? :supersede :append)))
+			   #+(or) (if reset-log? :supersede :append)
+         ;; Args for stream open sharing - only applies to CCL
+         (cond
+           #+ccl
+           ;; Use of :DEFAULT guards against any future change in default value
+           ((not (eq *ensure-stream-open-sharing* ':default))
+            (list :sharing *ensure-stream-open-sharing*)))))
 		    (t (error "don't know how to log to ~a" location)))))))
 
 (defmethod close-sender ((sender stream-sender-mixin))
